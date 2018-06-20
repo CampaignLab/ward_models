@@ -1,0 +1,14 @@
+# same background color everywhere
+axes.edgecolor: F5F5F5
+axes.facecolor: F5F5F5
+patch.facecolor: F5F5F5
+figure.facecolor: F5F5F5
+axes.grid: false
+
+# axes styling
+axes.labelpad: 15
+axes.titlepad: 28
+axes.xmargin: 0.1
+axes.ymargin: 0.1
+xtick.color: 555555
+ytick.color: 555555
