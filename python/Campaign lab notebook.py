@@ -77,10 +77,9 @@ wards.head()
 # 
 # The amount that the model expects the observed values to vary from the expected ones is specified by another parameter `sigma_ward`.
 # 
-# The `authority_effect` parameters has its own predictors (`X_authority`) and parameters (`b_authority` and `sigma_authority`). This makes the overall model a multilevel model - there is a level for wards and a level for local authorities. Factoring the overall variation in Labour vote shares into two components like this is nice for two reasons. First, it helps us to interpret the results - for example we can check which local authorities tended to be particularly Labour-leaning. Secondly, this form of model lines up neatly with the information that we want to take into account, which also has a multi-level structure.
+# The `authority_effect` parameters have their own predictors (`X_authority`) and parameters (`b_authority` and `sigma_authority`). This makes the overall model a [multilevel model](http://www.bristol.ac.uk/cmm/learning/multilevel-models/what-why.html) - there is a level for wards and a level for local authorities. Factoring the overall variation in Labour vote shares into two components like this is nice for two reasons. First, it helps us to interpret the results - for example we can check which local authorities tended to be particularly Labour-leaning. Secondly, this form of model lines up neatly with the information that we want to take into account, which also has a multi-level structure.
 # 
-# Together with some prior distributions, the model defines a probability distribution which encodes what the data (along with our/its assumptions) say about all of these parameters. In order to answer statistical questions about this distribution - for example, to find out the average local authority effect for Barking & Dagenham - we need to use Markov Chain Monte Carlo to take approximate samples from it. Fortunately Stan makes it straightforward to use the latest techniques to do this.
-# 
+# Together with some fairly uncontroversial prior distributions, the model defines a probability distribution which encodes what the data (along with our/its assumptions) say about all of these parameters. In order to answer statistical questions about this distribution - for example, to find out the average local authority effect for Barking & Dagenham - we need to use Markov Chain Monte Carlo to take approximate samples from it. Fortunately [Stan](http://mc-stan.org/) makes it straightforward to do this using the latest and most efficient method.
 # 
 # Some further reading about MCMC and multilevel models:
 # 
@@ -92,7 +91,7 @@ wards.head()
 #  - [A case study applying multi-level modelling of baseball (and explaining why multi-level models are useful)](http://mc-stan.org/users/documentation/case-studies/pool-binary-trials.html)
 # 
 
-# In[2]:
+# In[ ]:
 
 model = pystan.StanModel(file="../stan/local_election_model.stan")
 print(model.model_code)
@@ -102,7 +101,7 @@ print(model.model_code)
 # 
 # The most interesting thing is that, if you add any new predictors to the `wards` dataframe, you can include them in the model just by adding their column names to either `ward_level_predictors` or `authority_level_predictors` below.
 
-# In[3]:
+# In[ ]:
 
 def stanify_series(s):
     return pd.Series(s.fillna('value_missing').factorize()[0] + 1, index=s.index)
@@ -111,8 +110,6 @@ def z_score(s):
     return (s - s.mean()) / s.std()
 
 # types!
-categorical_cols = ['Authority', 'Ward', 'Constituency']
-int_cols = ['seats']
 float_cols = ['pctLab', 'lastPctLab']
 wards[float_cols] = wards[float_cols].astype(float)
 
@@ -148,7 +145,7 @@ model_input = {
 
 # Now we draw samples - this should be pretty quick with our smallish dataset and few predictors.
 
-# In[4]:
+# In[ ]:
 
 chains = 4
 n_iterations = 2000
@@ -160,7 +157,7 @@ fit = model.sampling(data=model_input, chains=chains, iter=n_iterations, sample_
 # 
 # The next cell checks for [post-warmup divergent transitions](http://mc-stan.org/users/documentation/case-studies/divergences_and_bias.html). There aren't any so that's good!
 
-# In[5]:
+# In[ ]:
 
 def get_diagnostic_dataframe(fit, include_warmup=False):
     first = 0 if include_warmup else fit.sim['warmup']
@@ -181,7 +178,7 @@ get_diagnostic_dataframe(fit).max()
 # - `sigma_ward` - this is the final error standard deviation, indicating how much the observed Labour vote shares tended to differ from the predictions. About 7% seems more or less plausible.
 # - `sigma_authority` - this is the standard deviation of the authority effect
 
-# In[6]:
+# In[ ]:
 
 def summarise_fit(fit, pars=None):
     if pars is None:
@@ -200,7 +197,7 @@ summarise_fit(fit, pars=parameters_to_show)
 # 
 # The most surprising ward is Hackney/Cazenove - its Labour vote share increased dramatically from 39% to over 90%, whereas the model's expected share was only 50%. In Newham/Stratford & New Town, the Labour share was much lower than expected at 43&, whereas the model thought it would be about 79%.
 
-# In[8]:
+# In[ ]:
 
 authority_output = pd.DataFrame({
     'authority_effect_mean': fit['authority_effect'].mean(axis=0),
@@ -224,7 +221,7 @@ ward_output.sort_values('log_likelihood_mean').iloc[:10]
 # 
 # This is in fact more or less what the plot shows, though there does seem to be a pattern - the dots on the left, where the model was predicting a low Labour share, seem to have generally been even lower than it thought they would be. This suggests something we might look at closer - what was special about those wards?
 
-# In[9]:
+# In[ ]:
 
 posterior_predictive_samples = pd.DataFrame(fit['labour_vote_tilde'], columns=ward_output.index)
 log_likelihood_samples = pd.DataFrame(fit['log_likelihood'], columns=ward_output.index)

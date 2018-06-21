@@ -1,6 +1,11 @@
 This is a notebook and some supporting files for analysing local election
 results following on from the first Campaign [[https://www.eventbrite.co.uk/e/campaign-lab-ii-modelling-the-2018-local-elections-tickets-47161916562?aff=erelexpmlt][Campaign Lab]] event.
 
+The idea is to predict the results of local elections at ward-level using some
+of the new data that people have been collating, which should yield some
+intereisting insights into what factors can be used to predict the results and
+where local campaigning has been particularly effective.
+
 ** Libraries
 You should be able to run the notebook as long as you have installed reasonably
 up to date versions of the following python libraries:
