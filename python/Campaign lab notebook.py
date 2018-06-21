@@ -7,17 +7,13 @@
 # 
 # This notebook gives a very first-draft example of the kind of model that might be useful for linking all of this data. 
 # 
-# The analysis is pretty limited - I didn't take advantage of very much of the interesting data that was gathered, taking everything from [one Britain Elects spreadsheet](https://docs.google.com/spreadsheets/d/14GKPoj-E1CN0ZmiUd5gQWUi5zvGWbDoNoGT82RqKEno/edit?ts=5b07edf9#gid=0) of data about the recent local elections in London. This means the model only takes into account two facts about each ward besides its Labour vote share in 2018, namely the local authority it is in and its Labour vote share in the 2014 local elections. It should be fairly straightforward from a modelling point of view to extend the model to incorporate other numerical or categorical facts about wards and local authorities. In the meantime it's probably best not to read too much into the preliminary results!
+# The analysis uses [this Britain Elects spreadsheet](https://docs.google.com/spreadsheets/d/14GKPoj-E1CN0ZmiUd5gQWUi5zvGWbDoNoGT82RqKEno/edit?ts=5b07edf9#gid=0) of data about the recent local elections in London, and [this ONS data] about income levels in local authorities. The model only takes into account three facts about each ward besides its Labour vote share in 2018, namely the local authority it is in, that authority's latest available median income and its Labour vote share in the 2014 local elections. It should be fairly straightforward from a modelling point of view to extend the model to incorporate other numerical or categorical facts about wards and local authorities. 
 # 
 # ### Fetching the data
 # 
 # The first code cell imports some python libraries, fetches the data from the online spreadsheet and does a little bit of preliminary tidying.
 # 
-# Libraries:
-#  - **[pandas](http://pandas.pydata.org/pandas-docs/stable/)** makes it easy to do neat operations to tables of data
-#  - **[pystan](http://pystan.readthedocs.io/en/latest/)** is a python interface to Stan, a statistical modelling platform
-#  - **[pyplot](https://matplotlib.org/api/pyplot_summary.html)** is for drawing graphs
-#  
+# The data about election results is downloaded in the cell, whereas local authority level income data has to be downloaded manually from [here](https://beta.ons.gov.uk/filter-outputs/858e0eae-709b-4bb3-ad31-f730c73d68c1).
 #  
 # We end up with a pandas [dataframe](http://pandas.pydata.org/pandas-docs/stable/dsintro.html#dataframe) holding facts about wards, the top of which is displayed below.
 
@@ -52,6 +48,22 @@ wards.columns = [
     'lastPctCon', 'lastPctLab', 'lastPctLDem', 'lastPctUKIP', 'lastPctGrn', 'lastPctInd', 'lastPctOth'
     
 ]
+
+# load income data
+latest_income_stats = (
+    pd.read_csv("../data/income_data.csv")
+    .rename(columns={'Geography': 'Authority', 'V4_2': 'income'})
+    .assign(Authority=lambda df: df['Authority'].str.replace('and ', '& '))
+    .loc[lambda df: df['income'].notnull()]
+    .groupby(['Authority', 'Statistics'])
+    .apply(lambda g: g.sort_values('Time')['income'].iloc[-1])
+    .unstack()
+)
+latest_income_stats.columns = ['authority_income_mean', 'authority_income_median']
+
+
+wards = wards.join(latest_income_stats, on='Authority')
+
 wards.head()
 
 
@@ -86,7 +98,9 @@ model = pystan.StanModel(file="../stan/local_election_model.stan")
 print(model.model_code)
 
 
-# This cell does some pretty mundane operations on our dataframe of ward data in order to make it easy to feed into the model.
+# The next cell does some pretty mundane operations on our dataframe of ward data in order to make it easy to feed into the model. 
+# 
+# The most interesting thing is that, if you add any new predictors to the `wards` dataframe, you can include them in the model just by adding their column names to either `ward_level_predictors` or `authority_level_predictors` below.
 
 # In[3]:
 
@@ -112,12 +126,11 @@ wards['WardUnique'] = wards[['Authority', 'Ward']].apply('-'.join, axis=1)
 wards['WardStan'] = wards['WardUnique'].pipe(stanify_series)
 wards['AuthorityStan'] = wards['Authority'].pipe(stanify_series)
 
-# dummy column
-wards['dummy_column'] = 1
-
-# define predictors
+# specify predictors
 ward_level_predictors = ['lastPctLab']
-authority_level_predictors = ['dummy_column']
+authority_level_predictors = ['authority_income_median']
+
+# dataframe of authority-level predictors
 x_authority = wards.groupby('AuthorityStan')[authority_level_predictors].first()
 
 # define model input
@@ -128,14 +141,14 @@ model_input = {
     'K_authority': len(authority_level_predictors),
     'authority': wards['AuthorityStan'],
     'X_ward': wards[ward_level_predictors].apply(z_score),
-    'X_authority': x_authority,
+    'X_authority': x_authority.apply(z_score),
     'labour_vote': wards['pctLab']
 }
 
 
 # Now we draw samples - this should be pretty quick with our smallish dataset and few predictors.
 
-# In[39]:
+# In[4]:
 
 chains = 4
 n_iterations = 2000
@@ -145,7 +158,7 @@ fit = model.sampling(data=model_input, chains=chains, iter=n_iterations, sample_
 
 # First some diagnostic checking, doing my best to follow the approach outlined [here](http://mc-stan.org/users/documentation/case-studies/pystan_workflow.html). 
 # 
-# There are no [post-warmup divergent transitions](http://mc-stan.org/users/documentation/case-studies/divergences_and_bias.html) so that's good!
+# The next cell checks for [post-warmup divergent transitions](http://mc-stan.org/users/documentation/case-studies/divergences_and_bias.html). There aren't any so that's good!
 
 # In[5]:
 
@@ -164,7 +177,7 @@ get_diagnostic_dataframe(fit).max()
 # Here is what the summary says about specific parameters:
 # - `mu` The mean of the posterior distribution for average Labour vote share is about 45% - this is about right
 # - `b_ward` This parameter represents the effect on expected 2018 Labour vote share of one stanard deviation's worth of change in 2014 share. As you would think, a higher previous Labour vote share predicts a higher 2018 share by about 15% per standard deviation.
-# - `b_authority` - this parameter corresponds to a dummy predictor that is the same for all wards. As we would hope it is within sampling error (`se_mean`) from zero.
+# - `b_authority` - this parameter corresponds to the income predictor - a one standard deviation change in median income predicts about a 1.3 percentage point decrease in authority effect.
 # - `sigma_ward` - this is the final error standard deviation, indicating how much the observed Labour vote shares tended to differ from the predictions. About 7% seems more or less plausible.
 # - `sigma_authority` - this is the standard deviation of the authority effect
 
@@ -187,7 +200,7 @@ summarise_fit(fit, pars=parameters_to_show)
 # 
 # The most surprising ward is Hackney/Cazenove - its Labour vote share increased dramatically from 39% to over 90%, whereas the model's expected share was only 50%. In Newham/Stratford & New Town, the Labour share was much lower than expected at 43&, whereas the model thought it would be about 79%.
 
-# In[32]:
+# In[8]:
 
 authority_output = pd.DataFrame({
     'authority_effect_mean': fit['authority_effect'].mean(axis=0),
@@ -197,7 +210,8 @@ ward_output = pd.DataFrame({
     'labour_vote_hat_mean': fit['labour_vote_hat'].mean(axis=0),
     'log_likelihood_mean': fit['log_likelihood'].mean(axis=0),
     'pctLab': wards['pctLab'].values,
-    'lastPctLab': wards['lastPctLab'].values
+    'lastPctLab': wards['lastPctLab'].values,
+    'authority_income_median': wards['authority_income_median'].values
 }, index=pd.MultiIndex.from_tuples(wards[['Authority', 'Ward']].apply(tuple, axis=1)))
 
 ward_output.index.names = ['Authority', 'Ward']
@@ -206,11 +220,11 @@ ward_output = ward_output.join(authority_output, on='Authority')
 ward_output.sort_values('log_likelihood_mean').iloc[:10]
 
 
-# To get an idea of the overall variation, the last cell plots observed and expected Labour shares for all the wards in our dataset, along with the model's posterior credible intervals. Ideally, we should see about 50% of the blue dots inside the dark orange region, and 95% of them inside the lighter one, and there should be no particular pattern in the errors.
+# To get an idea of the overall variation, the last cell plots 2018 and 2014 Labour shares for all the wards in the Britain Elects dataset, along with the model's posterior credible intervals. Ideally, we should see about 70% of the blue dots inside the dark orange region, and 95% of them inside the lighter one, and there should be no particular pattern in the errors.
 # 
 # This is in fact more or less what the plot shows, though there does seem to be a pattern - the dots on the left, where the model was predicting a low Labour share, seem to have generally been even lower than it thought they would be. This suggests something we might look at closer - what was special about those wards?
 
-# In[37]:
+# In[9]:
 
 posterior_predictive_samples = pd.DataFrame(fit['labour_vote_tilde'], columns=ward_output.index)
 log_likelihood_samples = pd.DataFrame(fit['log_likelihood'], columns=ward_output.index)
@@ -226,20 +240,20 @@ ppc_upper = posterior_predictive_samples.quantile(upper_quantile)
 ppc_lower_2 = posterior_predictive_samples.quantile(lower_quantile_2)
 ppc_upper_2 = posterior_predictive_samples.quantile(upper_quantile_2)
 
-f, ax = plt.subplots(figsize=[10, 6])
-plt.scatter(ppc_mean, ward_output['pctLab'], s=5, label=None, zorder=4)
-plt.vlines(ppc_mean, ppc_lower, ppc_upper, color='tab:orange', alpha=0.4, label='model uncertainty (70%)')
-plt.vlines(ppc_mean, ppc_lower_2, ppc_upper_2, color='tab:orange', alpha=0.1, label='model uncertainty (95%)')
+f, ax = plt.subplots(figsize=[15, 10])
+plt.scatter(ward_output['lastPctLab'], ward_output['pctLab'], s=5, label=None, zorder=4)
+plt.vlines(ward_output['lastPctLab'], ppc_lower, ppc_upper, color='tab:orange', alpha=0.4, label='model uncertainty (70%)')
+plt.vlines(ward_output['lastPctLab'], ppc_lower_2, ppc_upper_2, color='tab:orange', alpha=0.1, label='model uncertainty (95%)')
 
 for i in log_likelihood_samples.mean().sort_values().iloc[:15].index.values:
-    plt.text(ppc_mean.loc[i], ward_output.loc[i, 'pctLab'], '-'.join(i), fontsize=8)
+    plt.text(ward_output['lastPctLab'].loc[i], ward_output.loc[i, 'pctLab'], '-'.join(i), fontsize=8)
 
 
-ax.set_title("In which London wards was the Labour vote higher or lower than expected?")
+ax.set_title("Where was the Labour vote higher or lower than expected?", y=0.9, fontsize=16)
 
-plt.xlabel("Labour vote (predicted)")
-plt.ylabel("Labour vote (observed)")
-plt.legend(frameon=False, loc='upper left')
+plt.xlabel("2014 Labour vote (%)")
+plt.ylabel("2018\nLabour vote (%)", rotation=0)
+plt.legend(frameon=False, loc='lower right')
 
 plt.show()
 

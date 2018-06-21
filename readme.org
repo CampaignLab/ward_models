@@ -1,0 +1,14 @@
+This is a notebook and some supporting files for analysing local election
+results following on from the first Campaign [[https://www.eventbrite.co.uk/e/campaign-lab-ii-modelling-the-2018-local-elections-tickets-47161916562?aff=erelexpmlt][Campaign Lab]] event.
+
+** Libraries
+You should be able to run the notebook as long as you have installed reasonably
+up to date versions of the following python libraries:
+
+ - [[http://jupyter.org/install.html][jupyter]] (I used version 1.0.0) for running the interactive notebook
+ - [[http://pandas.pydata.org/pandas-docs/stable/][pandas]] (0.23.1) for doing neat operations with tables of data
+ - [[http://pystan.readthedocs.io/en/latest/][pystan]] (2.17.1.0) a python interface to Stan, a statistical modelling platform
+ - [[https://matplotlib.org/api/pyplot_summary.html][matplotlib]] (2.0.0)for drawing graphs
+ 
+You'll also need to download some ONS data about income levels in local
+authorities from [[https://beta.ons.gov.uk/filter-outputs/858e0eae-709b-4bb3-ad31-f730c73d68c1][here]] and save it as `data/income_data.csv`.
