@@ -91,7 +91,7 @@ wards.head()
 #  - [A case study applying multi-level modelling of baseball (and explaining why multi-level models are useful)](http://mc-stan.org/users/documentation/case-studies/pool-binary-trials.html)
 # 
 
-# In[ ]:
+# In[2]:
 
 model = pystan.StanModel(file="../stan/local_election_model.stan")
 print(model.model_code)
@@ -101,7 +101,7 @@ print(model.model_code)
 # 
 # The most interesting thing is that, if you add any new predictors to the `wards` dataframe, you can include them in the model just by adding their column names to either `ward_level_predictors` or `authority_level_predictors` below.
 
-# In[ ]:
+# In[3]:
 
 def stanify_series(s):
     return pd.Series(s.fillna('value_missing').factorize()[0] + 1, index=s.index)
@@ -145,7 +145,7 @@ model_input = {
 
 # Now we draw samples - this should be pretty quick with our smallish dataset and few predictors.
 
-# In[ ]:
+# In[4]:
 
 chains = 4
 n_iterations = 2000
@@ -157,7 +157,7 @@ fit = model.sampling(data=model_input, chains=chains, iter=n_iterations, sample_
 # 
 # The next cell checks for [post-warmup divergent transitions](http://mc-stan.org/users/documentation/case-studies/divergences_and_bias.html). There aren't any so that's good!
 
-# In[ ]:
+# In[5]:
 
 def get_diagnostic_dataframe(fit, include_warmup=False):
     first = 0 if include_warmup else fit.sim['warmup']
@@ -178,7 +178,7 @@ get_diagnostic_dataframe(fit).max()
 # - `sigma_ward` - this is the final error standard deviation, indicating how much the observed Labour vote shares tended to differ from the predictions. About 7% seems more or less plausible.
 # - `sigma_authority` - this is the standard deviation of the authority effect
 
-# In[ ]:
+# In[6]:
 
 def summarise_fit(fit, pars=None):
     if pars is None:
@@ -197,7 +197,7 @@ summarise_fit(fit, pars=parameters_to_show)
 # 
 # The most surprising ward is Hackney/Cazenove - its Labour vote share increased dramatically from 39% to over 90%, whereas the model's expected share was only 50%. In Newham/Stratford & New Town, the Labour share was much lower than expected at 43&, whereas the model thought it would be about 79%.
 
-# In[ ]:
+# In[7]:
 
 authority_output = pd.DataFrame({
     'authority_effect_mean': fit['authority_effect'].mean(axis=0),
@@ -221,7 +221,7 @@ ward_output.sort_values('log_likelihood_mean').iloc[:10]
 # 
 # This is in fact more or less what the plot shows, though there does seem to be a pattern - the dots on the left, where the model was predicting a low Labour share, seem to have generally been even lower than it thought they would be. This suggests something we might look at closer - what was special about those wards?
 
-# In[ ]:
+# In[8]:
 
 posterior_predictive_samples = pd.DataFrame(fit['labour_vote_tilde'], columns=ward_output.index)
 log_likelihood_samples = pd.DataFrame(fit['log_likelihood'], columns=ward_output.index)
